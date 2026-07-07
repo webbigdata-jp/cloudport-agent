@@ -5,7 +5,7 @@
 ![Demo time](https://img.shields.io/badge/demo_time-about_5_min-orange)
 ![Human approvals](https://img.shields.io/badge/human_approvals-8-blue)
 ![Files changed](https://img.shields.io/badge/files_changed-2-green)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 
 CloudPort Agent helps migrate production Gemini / Google Cloud applications to Qwen on Alibaba Cloud by turning real migration experience into reusable, model-invoked Qwen Code Agent Skills.
 
@@ -249,11 +249,6 @@ Recommended repository setup:
 
 Before submitting to Devpost:
 
-- [ ] Repository is public.
-- [ ] `LICENSE` exists and GitHub About displays the OSS license.
-- [ ] GitHub About description is set to: `Gemini-to-Qwen Cloud migration copilot, packaged as native Qwen Code Agent Skills`
-- [ ] No secrets are committed: API keys, MongoDB URI, `.env`, cloud credentials.
-- [ ] `git log -p | grep -i "sk-\|mongodb+srv"` does not reveal secrets.
 - [ ] `skills/` and `.qwen/skills/` contain the final six skills.
 - [ ] Dependency file layout guidance is reflected in `dependency-migration`.
 - [ ] README links work, except the intentionally pending YouTube link before upload.
