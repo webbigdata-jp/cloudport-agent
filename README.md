@@ -319,7 +319,7 @@ Before submitting to Devpost:
 
 ## Built with
 
-Qwen Code, Qwen Cloud, `qwen-plus`, `text-embedding-v4`, DashScope OpenAI-compatible API, Alibaba Cloud Function Compute, Python, OpenAI SDK, Pydantic, MongoDB Atlas Vector Search, Google ADK (`google.adk.agents`), uv, mcp, rag, mongodb-atlas, dashscope. 
+Qwen Code, Qwen Cloud, `qwen-plus`, `text-embedding-v4`, DashScope OpenAI-compatible API, Alibaba Cloud Function Compute, Python, OpenAI SDK, Pydantic, MongoDB Atlas Vector Search, Google ADK (`google.adk.agents`), uv, mcp, rag, mongodb-atlas, dashscope, function-compute, alibaba-cloud, agent-skills, python 
 
 ---
 
