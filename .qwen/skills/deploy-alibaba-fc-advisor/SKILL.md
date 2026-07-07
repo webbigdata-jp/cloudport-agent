@@ -53,6 +53,71 @@ FC workflows, and choosing the wrong one produces useless advice.
 - If the profile does not specify a method, ASK THE HUMAN before
   writing steps. Do not default to Docker.
 
+
+## Docker-to-FC zip migration pattern
+
+When the source app was deployed with Docker or Cloud Run and the migrated app
+uses FC console zip upload, do not translate the Dockerfile line-by-line. Treat
+the Dockerfile as evidence of runtime requirements, then express those
+requirements in the FC zip workflow.
+
+### What to extract from the old Dockerfile
+
+Use the old Dockerfile to identify:
+
+- Python runtime version and whether the FC runtime must change.
+- Non-Python runtime requirements, especially Node.js for MCP servers.
+- Global packages that were pre-installed in the image to avoid runtime fetches.
+- Startup command / entrypoint behavior.
+- Exposed port assumptions and whether FC injects its own port/handler config.
+- Files that were copied into the image.
+
+Then map those into the actual FC deployment method defined by the project
+profile.
+
+### FC console zip upload workflow
+
+For projects whose profile says "console zip upload":
+
+1. Build the deployment artifact locally.
+2. Vendor Python dependencies into the package root, usually with
+   `pip install -t <package-root> -r requirements.txt`.
+3. Vendor Node dependencies into the package root if runtime code starts Node
+   programs such as an MCP server.
+4. Remove unnecessary native payloads or caches only when the project has
+   validated that the removed files are not used at runtime.
+5. Create the zip from inside the package root, so the function entrypoint files
+   are at the top level of the archive.
+6. Upload the resulting zip in the FC console.
+7. Set secrets and configuration in FC environment variables, not inside the zip.
+
+If a project provides a build script such as `deploy.sh`, prefer the script over
+manual reconstruction. The advisor should explain what the script does and where
+human review is required, but should not upload the package itself.
+
+### Docker/Cloud Run versus FC zip: common migration differences
+
+| Cloud Run / Docker pattern | FC zip upload pattern |
+|---|---|
+| Dockerfile defines the runtime image | FC runtime is selected in the console; zip contains code and vendored deps |
+| `pip install` runs during image build | `pip install -t build ...` vendors packages into the zip package |
+| `npm install -g` can prefetch tools into the image | `npm install --prefix build ...` vendors Node packages into the zip package |
+| Container startup uses `CMD` / `$PORT` | FC uses the configured runtime/handler/entrypoint; keep package root layout aligned |
+| Image is pushed to a registry or deployed by Cloud Run | `code.zip` is uploaded through FC console or the project's chosen FC workflow |
+| Runtime filesystem and caches can be image-backed | Treat runtime as disposable; do not rely on npm/pip cache at startup |
+
+### Advisory wording for zip upload
+
+For a zip-upload project, the deployment response should explicitly say:
+
+- The previous Dockerfile is not the deployment artifact for FC.
+- The human should run the project build script locally to produce the zip.
+- The human should upload only the generated zip package.
+- The human should confirm runtime version, handler, environment variables, and
+  attached layers before testing.
+- Rollback means re-uploading the previous zip package or switching the FC
+  version/alias back, depending on the project's FC setup.
+
 ## Known field lessons (Function Compute)
 
 - No runtime package fetches: FC cold-start timeouts kill

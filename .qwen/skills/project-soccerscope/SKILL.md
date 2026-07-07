@@ -223,6 +223,97 @@ For full migration, additionally check:
 | `app/**` (soccer_agent web app) | Alibaba Cloud Function Compute | Console **zip upload** of the code package. No Docker, no ACR, no `s` CLI in the current workflow. |
 | `pipeline/**` (batch scripts) | **Local machine** via `run_daily.sh` (true for both the Gemini and Qwen versions) | Not deployed to the cloud at all. |
 
+
+### SoccerScope app deployment: Gemini Docker/Cloud Run to Qwen FC zip
+
+The original Gemini web app was packaged as a Docker image for Cloud Run. The
+Dockerfile used `python:3.11-slim`, installed Node.js, pre-fetched
+`mongodb-mcp-server`, installed Python dependencies from `requirements.txt`,
+copied the app into `/app`, and started the app with `python main.py`.
+
+The Qwen / Alibaba Cloud version does **not** use Docker, ACR, or Serverless Devs
+in the current workflow. It builds a self-contained `code.zip` locally and the
+human uploads that zip through the Alibaba Cloud Function Compute console.
+
+Do not advise rebuilding or uploading the old Docker image for the Qwen version
+unless the user explicitly changes the deployment method.
+
+#### Current Qwen FC artifact build
+
+The app-side build script is `app/deploy.sh`. It should be run from the `app/`
+directory and creates `code.zip`.
+
+Required behavior of this script:
+
+```bash
+deactivate
+rm -rf build .venv-fc
+
+uv venv .venv-fc --python 3.12 --seed
+source .venv-fc/bin/activate
+
+mkdir build
+cp main.py build/
+cp -r soccer_agent build/
+cp -r static build/
+rm -rf build/soccer_agent/__pycache__
+
+npm install --prefix build mongodb-mcp-server
+rm -rf build/node_modules/@oven
+
+cd build
+pip install -t . -r ../requirements.txt
+zip -rq -y ../code.zip ./
+cd ..
+deactivate
+```
+
+Important details:
+
+- Remove the old `build/` and `.venv-fc` before each build. Reusing them can
+  leave stale dependencies or stale files inside the uploaded package.
+- Use Python 3.12 for the build venv because the FC runtime is Python 3.12.
+- Copy only `main.py`, `soccer_agent/`, and `static/` into the package.
+- Install `mongodb-mcp-server` under `build/node_modules/` at build time.
+  Runtime `npx` fetches are forbidden because FC cold starts/timeouts make
+  on-demand npm resolution unreliable.
+- Remove `build/node_modules/@oven` only because this project has validated that
+  the bundled Bun native runtime payloads are unnecessary for
+  `mongodb-mcp-server` in this deployment and are too large.
+- Use `pip install -t . -r ../requirements.txt` from inside `build/` so Python
+  dependencies land at the zip package root.
+- Run `zip` from inside `build/`; if the zip contains a top-level `build/`
+  directory, the FC package layout is wrong.
+- The generated `code.zip` is the artifact to upload in the FC console.
+
+#### FC console configuration reminders
+
+For SoccerScope Qwen FC deployment, the human should verify:
+
+- Runtime: Python 3.12.
+- Node.js runtime availability: attach the official Node.js layer used by the
+  project, because `agent.py` starts the bundled MCP server with `node`.
+- Function handler / startup command: matches the app's `main.py` entrypoint and
+  the current FC console setup.
+- Environment variables are set in FC config, not baked into the zip:
+  `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL` or `DASHSCOPE_API_BASE` as needed,
+  `QWEN_CHAT_MODEL`, `QWEN_EMBED_MODEL`, `MONGODB_URI`,
+  `SOCCER_DB_NAME=qwen-soccertube`, and any existing app settings.
+- MongoDB Atlas network access allows the FC function to connect.
+- The uploaded package is the newly generated `code.zip`, not the old Docker
+  context and not the whole repository.
+
+#### When deployment is required
+
+- Changes under `pipeline/**` only: no FC redeploy. Run the local pipeline and
+  reload data as needed.
+- Changes to `app/soccer_agent/agent.py`, `app/main.py`, `app/static/**`,
+  `app/requirements.txt`, or `app/deploy.sh`: rebuild `code.zip` and upload it
+  through the FC console after validation.
+- Changes to only environment variables: no code zip rebuild is required, but
+  the FC environment configuration must be updated and the function restarted or
+  redeployed according to the console workflow.
+
 ### Consequences for deployment advice
 
 - Demo scope (only `pipeline/1_embed_videos.py` and

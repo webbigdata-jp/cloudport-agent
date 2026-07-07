@@ -145,7 +145,7 @@ resp = client.models.generate_content(
 
 parsed = resp.parsed
 if parsed is None:
-    print(f"WARNING: パース失敗。生応答先頭: {(resp.text or '')[:120]}")
+    print(f"WARNING: Parse failed. Raw response prefix: {(resp.text or '')[:120]}")
     return None
 
 return parsed
@@ -204,25 +204,25 @@ The system instruction should explicitly contain the word `JSON` / `json` and th
 
 ```python
 SYSTEM_INSTRUCTION = (
-    "あなたは多言語のYouTubeコメントを分析する専門家です。"
+    "You are an expert in analyzing multilingual YouTube comments."
     "\n\n"
-    "必ず有効なJSON形式のみで応答してください。"
-    "前置き・説明文・マークダウンのコードブロックは一切付けず、"
-    "JSONオブジェクト単体を出力してください。"
-    "出力するJSONオブジェクトは、以下の構造・型に厳密に従ってください:\n"
+    "Always respond only in valid JSON format."
+    "Do not include any preamble, explanatory text, or Markdown code fences. "
+    "Output only a single JSON object."
+    "The output JSON object must strictly follow the following structure and types:\n"
     "{\n"
-    '  "is_soccer_related": true または false,\n'
-    '  "relevance_reason": "判定理由",\n'
-    '  "sentiment": {"positive": 数値, "negative": 数値, "neutral": 数値},\n'
-    '  "positive_themes": [{"theme_ja": "文字列", "theme_en": "文字列", "mention_count": 整数}],\n'
-    '  "negative_themes": [{"theme_ja": "文字列", "theme_en": "文字列", "mention_count": 整数}],\n'
-    '  "quotable_comments": [{"original": "文字列", "translated_ja": "文字列", '
-    '"translated_en": "文字列", "author": "文字列", "likes": 整数, '
-    '"original_language": "言語コード"}],\n'
-    '  "mentioned_teams": [{"team": "英語の代表チーム名", '
-    '"sentiment": "positive|neutral|negative", "mention_count": 整数}]\n'
+    '  "is_soccer_related": true or false,\n'
+    '  "relevance_reason": "reason for the judgment",\n'
+    '  "sentiment": {"positive": number, "negative": number, "neutral": number},\n'
+    '  "positive_themes": [{"theme_ja": "Japanese string", "theme_en": "English string", "mention_count": integer}],\n'
+    '  "negative_themes": [{"theme_ja": "Japanese string", "theme_en": "English string", "mention_count": integer}],\n'
+    '  "quotable_comments": [{"original": "string", "translated_ja": "Japanese string", '
+    '"translated_en": "English string", "author": "string", "likes": integer, '
+    '"original_language": "language code"}],\n'
+    '  "mentioned_teams": [{"team": "English national team name", '
+    '"sentiment": "positive|neutral|negative", "mention_count": integer}]\n'
     "}\n"
-    "全てのフィールドは省略せず必ず含めてください。"
+    "Include all fields without omitting any of them."
 )
 ```
 
@@ -282,6 +282,342 @@ export DASHSCOPE_API_KEY="..."
 - Do not combine thinking mode with JSON mode. Pass `extra_body={"enable_thinking": False}` when using DashScope through the OpenAI SDK.
 - Set an explicit timeout. The OpenAI SDK default timeout can be too long for batch pipelines.
 
+
+---
+
+## Example 3: ADK agent runtime migration
+
+Source file:
+
+```text
+app/soccer_agent/agent.py
+```
+
+This example covers the web-app agent layer, not just offline pipeline scripts.
+
+The reusable migration pattern has four parts:
+
+1. Wrap the ADK model with `LiteLlm` for non-Gemini backends.
+2. Replace Gemini query embeddings with DashScope OpenAI-compatible embeddings.
+3. Keep the vector dimensionality and vector-index isolation explicit.
+4. Avoid runtime package downloads in Function Compute by launching a bundled MCP server with `node`, not `npx`.
+
+### Focused diff: imports, model selection, and environment variables
+
+```diff
+ import asyncio
+-import json
+ import math
+ import os
+
+-from google import genai
+-from google.genai import types
++from openai import OpenAI
++from pymongo import AsyncMongoClient
+
+ from google.adk.agents import Agent
++from google.adk.models.lite_llm import LiteLlm
+ from google.adk.tools.mcp_tool import McpToolset, StdioConnectionParams
+ from mcp import StdioServerParameters
+-from mcp.client.stdio import stdio_client
+-from mcp import ClientSession
+
+-DB_NAME = "soccertube"
+-COLLECTION = "videos"
+-VECTOR_INDEX = "video_semantic_index"
++DB_NAME = os.environ.get("SOCCER_DB_NAME", "soccertube")
++COLLECTION = os.environ.get("SOCCER_COLL_NAME", "videos")
++VECTOR_INDEX = os.environ.get("SOCCER_INDEX_NAME", "video_semantic_index")
+ VECTOR_PATH = "embedding"
+-EMBED_MODEL = "gemini-embedding-001"
+-EMBED_DIM = 768
+-AGENT_MODEL = "gemini-3.1-flash-lite"
++
++EMBED_MODEL = os.environ.get("QWEN_EMBED_MODEL", "text-embedding-v4")
++EMBED_DIM = 768
++DASHSCOPE_BASE_URL = os.environ.get(
++    "DASHSCOPE_BASE_URL",
++    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
++)
++
++os.environ.setdefault("DASHSCOPE_API_BASE", DASHSCOPE_BASE_URL)
++
++QWEN_CHAT_MODEL = os.environ.get("QWEN_CHAT_MODEL", "qwen3.7-max")
++AGENT_MODEL = LiteLlm(model=f"dashscope/{QWEN_CHAT_MODEL}")
+```
+
+### Why `LiteLlm` is required for ADK
+
+In this project, `google.adk.agents.Agent` can still be kept as the agent framework.
+The model value is the part that changes.
+
+```python
+from google.adk.agents import Agent
+from google.adk.models.lite_llm import LiteLlm
+
+DASHSCOPE_BASE_URL = os.environ.get(
+    "DASHSCOPE_BASE_URL",
+    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+)
+
+# LiteLLM expects DASHSCOPE_API_BASE, while the OpenAI SDK client below uses
+# base_url=DASHSCOPE_BASE_URL. Set both names so the two clients agree.
+os.environ.setdefault("DASHSCOPE_API_BASE", DASHSCOPE_BASE_URL)
+
+QWEN_CHAT_MODEL = os.environ.get("QWEN_CHAT_MODEL", "qwen3.7-max")
+AGENT_MODEL = LiteLlm(model=f"dashscope/{QWEN_CHAT_MODEL}")
+
+root_agent = Agent(
+    model=AGENT_MODEL,
+    name="soccer_agent",
+    instruction=INSTRUCTION,
+    tools=[search_videos, mongodb_mcp],
+)
+```
+
+Important notes:
+
+- Passing a plain string such as `"gemini-3.1-flash-lite"` to ADK means Gemini.
+- Passing a plain string such as `"qwen-plus"` is not enough for this ADK path.
+- Use `LiteLlm(model="dashscope/<model-name>")` for Qwen / DashScope models.
+- Install `litellm` in the app runtime dependency group.
+- Set `DASHSCOPE_API_KEY` for LiteLLM and the OpenAI-compatible embedding client.
+- Set `DASHSCOPE_API_BASE` for LiteLLM and `DASHSCOPE_BASE_URL` for the OpenAI SDK, or bridge them with `os.environ.setdefault`.
+
+### Focused diff: query embedding
+
+Before, query embeddings used Gemini GenAI with `RETRIEVAL_QUERY`.
+
+```python
+from google import genai
+from google.genai import types
+
+EMBED_MODEL = "gemini-embedding-001"
+EMBED_DIM = 768
+
+_genai_client: genai.Client | None = None
+
+def _client() -> genai.Client:
+    global _genai_client
+    if _genai_client is None:
+        _genai_client = genai.Client()
+    return _genai_client
+
+def _embed_query_sync(query_text: str) -> list[float]:
+    resp = _client().models.embed_content(
+        model=EMBED_MODEL,
+        contents=query_text,
+        config=types.EmbedContentConfig(
+            task_type="RETRIEVAL_QUERY",
+            output_dimensionality=EMBED_DIM,
+        ),
+    )
+    return _l2_normalize(list(resp.embeddings[0].values))
+```
+
+After, query embeddings use the DashScope OpenAI-compatible endpoint.
+
+```python
+from openai import OpenAI
+
+EMBED_MODEL = os.environ.get("QWEN_EMBED_MODEL", "text-embedding-v4")
+EMBED_DIM = 768
+
+_dashscope_client: OpenAI | None = None
+
+def _client() -> OpenAI:
+    global _dashscope_client
+    if _dashscope_client is None:
+        _dashscope_client = OpenAI(
+            api_key=os.environ.get("DASHSCOPE_API_KEY", ""),
+            base_url=DASHSCOPE_BASE_URL,
+        )
+    return _dashscope_client
+
+def _embed_query_sync(query_text: str) -> list[float]:
+    resp = _client().embeddings.create(
+        model=EMBED_MODEL,
+        input=query_text,
+        dimensions=EMBED_DIM,
+    )
+    return _l2_normalize(list(resp.data[0].embedding))
+```
+
+Key migration notes:
+
+- Preserve `EMBED_DIM = 768` if the existing Atlas Vector Search index is 768-dimensional.
+- Re-embed the stored corpus with the same Qwen embedding model before using Qwen query embeddings.
+- Do not query a Gemini-generated vector index with Qwen-generated query vectors unless you are explicitly testing degraded cross-model retrieval.
+- The DashScope OpenAI-compatible endpoint does not expose Gemini's `task_type="RETRIEVAL_QUERY"` option. If asymmetric query/document embeddings are required, evaluate the native DashScope SDK separately.
+
+### Focused diff: vector search execution path
+
+The Gemini/GCP version embedded the query in code, then called MongoDB MCP `aggregate`.
+That preserved MCP involvement, but it required parsing MCP output and starting an MCP process inside every vector-search call.
+
+```diff
+-# --- Robust parsing of MCP aggregate results ---
+-def _parse_aggregate_result(result) -> tuple[list | None, str]:
+-    ...
+-
+-# --- Custom tool: semantic search (embed -> code directly calls MCP aggregate) ---
++# --- MongoDB (pymongo Async API; direct connection only for $vectorSearch) ----
++_mongo_client: AsyncMongoClient | None = None
++
++def _get_client() -> AsyncMongoClient:
++    global _mongo_client
++    if _mongo_client is None:
++        _mongo_client = AsyncMongoClient(os.environ.get("MONGODB_URI", ""))
++    return _mongo_client
++
++def _get_collection():
++    return _get_client()[DB_NAME][COLLECTION]
++
++# --- Custom tool: semantic search (embed -> direct pymongo $vectorSearch) ------
+ async def search_videos(...):
+     query_vector = await asyncio.to_thread(_embed_query_sync, query_text)
+     pipeline = [{"$vectorSearch": vsearch}, {"$project": PROJECTION}]
+
+-    # Start the official MongoDB MCP and call aggregate within this tool call.
+-    result = None
+     try:
+-        async with stdio_client(_mcp_server_params()) as (read, write):
+-            async with ClientSession(read, write) as session:
+-                await session.initialize()
+-                result = await session.call_tool(
+-                    "aggregate",
+-                    {
+-                        "database": DB_NAME,
+-                        "collection": COLLECTION,
+-                        "pipeline": pipeline,
+-                    },
+-                )
++        cursor = await _get_collection().aggregate(pipeline)
++        videos = [doc async for doc in cursor]
+     except Exception as e:
+-        if result is None:
+-            return {"error": f"mcp aggregate failed: {e}", "count": 0, "videos": []}
++        return {"error": f"aggregate failed: {e}", "count": 0, "videos": []}
+
+-    parsed, raw = _parse_aggregate_result(result)
+-    if parsed is not None:
+-        return {"count": len(parsed), "videos": parsed}
+-    return {"count": 0, "videos": [], "raw": raw[:4000]}
++    return {"count": len(videos), "videos": videos}
+```
+
+This is not a universal requirement for Gemini → Qwen migration, but it is a useful pattern for RAG tools:
+
+- Keep the LLM away from raw embedding vectors.
+- Keep semantic search as one custom tool: `query_text -> embedding -> $vectorSearch -> projected docs`.
+- Use MCP for detail lookup, count, and schema inspection, while keeping high-volume vector search in ordinary application code.
+- Remove MCP result parsing code when vector search no longer goes through MCP.
+
+### Focused diff: MCP startup on Alibaba Cloud Function Compute
+
+The original app used `npx` to start the official MongoDB MCP server.
+
+```python
+def _mcp_server_params() -> StdioServerParameters:
+    return StdioServerParameters(
+        command="npx",
+        args=["-y", "mongodb-mcp-server", "--readOnly"],
+        env={
+            **os.environ,
+            "MDB_MCP_CONNECTION_STRING": os.environ.get("MONGODB_URI", ""),
+            "MDB_MCP_TELEMETRY": "disabled",
+        },
+    )
+```
+
+The migrated app starts the MCP server from the deployment artifact instead.
+
+```python
+_MONGODB_MCP_ENTRY = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "node_modules",
+    "mongodb-mcp-server",
+    "dist",
+    "esm",
+    "index.js",
+)
+
+def _mcp_server_params() -> StdioServerParameters:
+    return StdioServerParameters(
+        command="node",
+        args=[_MONGODB_MCP_ENTRY, "--readOnly"],
+        env={
+            **os.environ,
+            "MDB_MCP_CONNECTION_STRING": os.environ.get("MONGODB_URI", ""),
+            "MDB_MCP_TELEMETRY": "disabled",
+            "HOME": "/tmp",
+            "MDB_MCP_LOG_PATH": "/tmp/mongodb-mcp-logs",
+            "MDB_MCP_EXPORTS_PATH": "/tmp/mongodb-mcp-exports",
+        },
+    )
+```
+
+Build-time packaging pattern:
+
+```bash
+npm install --prefix build mongodb-mcp-server
+rm -rf build/node_modules/@oven
+```
+
+Important notes:
+
+- Do not use `npx` as the production startup path on disposable serverless runtimes.
+- Do not download runtime packages during Function Compute startup.
+- Bundle `mongodb-mcp-server` into the deployment artifact under `node_modules/`.
+- Keep the Node.js 20 Function Compute public layer attached so the `node` executable exists.
+- Always merge `os.environ` into the MCP server env; replacing it can remove `PATH` and make `node` unavailable.
+- Set writable MCP paths under `/tmp`, because `/opt` and default home directories may not be writable.
+
+### Focused diff: MCP tool instruction after DB names become configurable
+
+When `DB_NAME`, `COLLECTION`, and `VECTOR_INDEX` become environment-variable driven,
+the model instruction should explicitly tell the LLM to pass database and collection
+arguments to the MCP tools.
+
+```diff
+-- **find / count**: USE THESE to fetch specific documents by exact fields.
++- There is no tool named find_videos anymore. For fetching specific documents,
++  counting, or inspecting structure, use the official MongoDB MCP tools:
++  **find**, **count**, **list-collections**, **collection-schema**. These tools
++  are NOT bound to a fixed database/collection, so you MUST always pass
++  database="{DB_NAME}" and collection="{COLLECTION}" explicitly — forgetting
++  this may silently query the wrong database or collection.
+```
+
+This matters because the Qwen deployment may use `SOCCER_DB_NAME=qwen-soccertube`,
+while the Gemini deployment may continue to use the original `soccertube` database.
+
+### Environment
+
+```bash
+pip install openai litellm pymongo google-adk mcp
+export DASHSCOPE_API_KEY="..."
+export DASHSCOPE_BASE_URL="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+export DASHSCOPE_API_BASE="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+export QWEN_CHAT_MODEL="qwen3.7-max"
+export QWEN_EMBED_MODEL="text-embedding-v4"
+
+# Use a separate DB or collection after re-embedding to avoid mixed vector spaces.
+export SOCCER_DB_NAME="qwen-soccertube"
+export SOCCER_COLL_NAME="videos"
+export SOCCER_INDEX_NAME="video_semantic_index"
+```
+
+### Important migration notes
+
+- This file is an app runtime migration, so it touches more than the bare LLM SDK call.
+- The ADK framework can remain; the model object changes to `LiteLlm`.
+- Embeddings and chat completion use different client layers: OpenAI SDK for embeddings, LiteLLM for ADK chat model routing.
+- The vector-search collection should be separated from the Gemini collection after re-embedding.
+- The MCP server remains useful, but runtime startup must be serverless-safe.
+- This pattern belongs partly to `gemini-to-qwen-api-mapping` and partly to deployment guidance. Keep the API mapping example here, and cross-link deployment-specific packaging details from `deploy-alibaba-fc-advisor` if the project has that skill.
+
 ---
 
 ## Optional hardening used in the SoccerScope migration
@@ -327,9 +663,9 @@ def repair_json(client: OpenAI, broken_text: str) -> str:
             {
                 "role": "system",
                 "content": (
-                    "あなたはJSON形式の専門家です。"
-                    "壊れたJSON文字列を有効なJSON形式に修復してください。"
-                    "JSONオブジェクト単体のみを出力してください。"
+                    "You are an expert in JSON formatting."
+                    "Repair the broken JSON string into valid JSON format."
+                    "Output only a single JSON object."
                 ),
             },
             {"role": "user", "content": broken_text},
@@ -348,9 +684,12 @@ def repair_json(client: OpenAI, broken_text: str) -> str:
 |---|---|
 | `GEMINI_API_KEY` | `DASHSCOPE_API_KEY` |
 | `gemini-embedding-001` | `text-embedding-v4` |
-| `gemini-3.1-flash-lite` | `qwen-plus` or another DashScope chat model |
+| `gemini-3.1-flash-lite` | `qwen-plus`, `qwen3.7-max`, or another DashScope chat model |
+| Plain ADK model string for Gemini | `LiteLlm(model="dashscope/<model-name>")` for Qwen |
 | Google GenAI SDK | OpenAI SDK with DashScope compatible base URL |
 | `response_schema=PydanticModel` | `response_format={"type": "json_object"}` + local Pydantic validation |
+| Fixed `soccertube` vector DB | Separate Qwen vector DB/collection, e.g. `SOCCER_DB_NAME=qwen-soccertube` |
+| `npx mongodb-mcp-server` at runtime | Bundled `node_modules` + direct `node <index.js>` startup |
 
 Recommended Qwen environment variables:
 
@@ -360,6 +699,14 @@ export DASHSCOPE_BASE_URL="https://dashscope-intl.aliyuncs.com/compatible-mode/v
 export QWEN_EMBED_MODEL="text-embedding-v4"
 export QWEN_CHAT_MODEL="qwen-plus"
 export QWEN_FIX_MODEL="qwen-flash"
+
+# For ADK + LiteLLM in the app runtime:
+export DASHSCOPE_API_BASE="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+
+# For app/runtime RAG isolation after Qwen re-embedding:
+export SOCCER_DB_NAME="qwen-soccertube"
+export SOCCER_COLL_NAME="videos"
+export SOCCER_INDEX_NAME="video_semantic_index"
 ```
 
 ---
@@ -377,12 +724,14 @@ For example, these are usually not part of a Gemini → Qwen LLM migration:
 
 Only rewrite files that actually call Gemini / Google GenAI / Vertex AI model APIs.
 
-For SoccerScope demo scope, the intended code-edit targets are:
+For SoccerScope pipeline demo scope, the intended code-edit targets are:
 
 ```text
 pipeline/1_embed_videos.py
 pipeline/3_analyze_comments.py
 ```
+
+For full app runtime migration, `app/soccer_agent/agent.py` is also an intended edit target because it contains the ADK model selection, query embedding path, vector-search tool, and MCP startup path.
 
 The following files are validation or data-flow context, but should not be edited for the minimal demo unless grep shows direct Gemini usage:
 
