@@ -11,13 +11,42 @@ CloudPort Agent helps migrate production Gemini / Google Cloud applications to Q
 
 ---
 
-## Why
+# Why
 
-Alibaba Cloud is investing heavily to become infrastructure for the agent era, but its global AI cloud share remains small compared with incumbent clouds. The biggest barrier is not only model quality; it is migration cost. Many production AI apps already have working Gemini, Vertex, Google Cloud, OpenAI, or AWS assumptions baked into their code, config, dependencies, deployment scripts, and vector indexes.
+Production AI apps are quietly locked in. Working Gemini, Vertex,Google Cloud, OpenAI, or AWS assumptions are baked into code, config,
+dependencies, deployment scripts — and vector indexes. Migration costIS vendor lock-in. CloudPort Agent attacks that cost directly: it makes
+your AI stack portable, so you can stand up a backup site on a second cloud, keep pricing leverage, and remove single-provider risk.
 
-We learned this by paying the migration cost ourselves. SoccerScope, our production YouTube analytics and multilingual comment-analysis app, was originally built on Gemini and Google Cloud. While migrating it to Qwen and Alibaba Cloud Function Compute, we realized the reusable knowledge was not just code; it was a set of decisions, warnings, API mappings, and validation rules that an agent could reuse on the next project.
+### Why Gemini → Qwen / Alibaba Cloud first
 
-CloudPort Agent is that experience packaged as native Qwen Code Agent Skills.
+The porting pattern is general, but our shipped skills cover the migration with the clearest payoff today:
+
+- **Cost — at agent-scale context, where it actually matters.**
+  Flagship vs flagship (per 1M tokens, as of this writing):
+  Qwen3.7-Max runs $2.50 in / $7.50 out at a single flat rate
+  ($1.25 / $3.75 under the promotional pricing through Jul 23, 2026),
+  while Gemini 3.1 Pro charges $2.00 / $12.00 — jumping to
+  $4.00 / $18.00 once a prompt exceeds 200K tokens. Here's the
+  catch: in the agent era, sub-200K prompts barely exist. A single
+  ~5-minute CloudPort Agent run migrating just two scripts consumed
+  ~80% of a 1M-token allowance. Repo-aware agents live above the
+  200K threshold, so Gemini's long-context tier is the *realistic*
+  rate — making Qwen roughly **55% cheaper for agent workloads**
+  (~77% under the current promotion), with no surcharge cliff to
+  engineer around.
+  
+- **An open-weights escape hatch.** Qwen models are open. Teams
+  already self-hosting Qwen on their own GPUs can scale out to
+  Alibaba Cloud without changing model family. There is no
+  self-host path back out of Gemini.
+- **Business continuity, proven.** We run the same production app on
+  both clouds today: SoccerScope on Gemini/Cloud Run and its migrated
+  twin on Qwen/Alibaba Cloud Function Compute. Same app, two clouds,
+  migrated by an agent with human-in-the-loop approval gates.
+
+Alibaba Cloud holds only ~4% of the global cloud market despite competitive models, 
+because migration cost blocks the door. These Agent Skills are that door's key, 
+in both directions of the argument: easier to come in, and never locked in.
 
 ---
 
@@ -34,6 +63,35 @@ Point Qwen Code at a Gemini-based repository and CloudPort Agent follows a human
 Human-in-the-loop is a design principle. The plan, file diffs, and deployment actions pass through approval gates. Billing-scoped and authentication-scoped cloud actions are advisory by design: the agent writes the checklist, and the human runs it.
 
 The reference migration target uses an ADK-based agent layer (`google.adk.agents`). That matters for portability: the CloudPort Skills are written around migration patterns, validation rules, and deployment constraints, so they should be relatively easy to adapt to other model backends that also use ADK-style agent structure.
+
+---
+
+## What the Migration Actually Touches
+
+CloudPort Agent is not a find-and-replace for API keys.
+The Gemini→Qwen migration spans four layers:
+
+### 1. LLM swap via Custom Skills
+Google ADK agent core rewired from Gemini to Qwen
+(`dashscope/qwen-plus` via LiteLLM) — framework untouched.
+
+### 2. RAG re-indexing with Qwen Embeddings
+The app runs RAG over MongoDB Atlas Vector Search.
+Embeddings migrated from Gemini to Qwen `text-embedding-v4`
+(DashScope OpenAI-compatible API). Vectors from different
+models are not interchangeable, so the corpus is re-embedded
+and the vector search index regenerated.
+
+### 3. MCP server integration on serverless
+The app uses the official MongoDB MCP server. On Cloud Run it
+ran via `npx`; Function Compute 3.0 Custom Runtime has no
+Node on PATH, so the invocation was rewritten to a direct
+`node` call with `node_modules` bundled at build time.
+
+### 4. Structured output compatibility layer
+Gemini's `response_schema=` has no DashScope equivalent.
+Replaced with schema-in-prompt + local Pydantic validation
++ retry-on-mismatch.
 
 ---
 
@@ -260,7 +318,7 @@ Before submitting to Devpost:
 
 ## Built with
 
-Qwen Code, Qwen Cloud, `qwen-plus`, `text-embedding-v4`, DashScope OpenAI-compatible API, Alibaba Cloud Function Compute, Python, OpenAI SDK, Pydantic, MongoDB Atlas Vector Search, Google ADK (`google.adk.agents`), uv.
+Qwen Code, Qwen Cloud, `qwen-plus`, `text-embedding-v4`, DashScope OpenAI-compatible API, Alibaba Cloud Function Compute, Python, OpenAI SDK, Pydantic, MongoDB Atlas Vector Search, Google ADK (`google.adk.agents`), uv, mcp, rag, mongodb-atlas, dashscope. 
 
 ---
 
