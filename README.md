@@ -228,6 +228,7 @@ CloudPort Agent is based on a real migration, not a toy example. SoccerScope is 
 | Alibaba Cloud deploy.sh | https://github.com/webbigdata-jp/qwen-soccerscope/blob/main/app/deploy.sh#L25 |
 | Demo video | [CloudPort Agent](https://youtu.be/Q7YraU36X0Q) |
 | Evidence video | [Proof that it is running on Alibaba Cloud](https://youtu.be/zrU0wAVNn0Q) |
+| project blog | [AI Agent Skills migrating worldcup rag app](https://dev.to/dahara1/ai-agent-skills-migrating-worldcup-rag-appgemini-and-gcp-to-qwen-and-alibaba-5dmg) |
 
 Demo measurement from the recorded migration run:
 
