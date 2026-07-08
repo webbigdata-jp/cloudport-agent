@@ -89,9 +89,8 @@ Node on PATH, so the invocation was rewritten to a direct
 `node` call with `node_modules` bundled at build time.
 
 ### 4. Structured output compatibility layer
-Gemini's `response_schema=` has no DashScope equivalent.
-Replaced with schema-in-prompt + local Pydantic validation
-+ retry-on-mismatch.
+The behavior of the `response_schema` feature can vary between models, such as Gemini (Google Gen AI SDK) and Qwen (DashScope).
+Therefore, I switched to an approach combining "schema embedding in the prompt," "local Pydantic validation," and "retries upon mismatch."
 
 ---
 
@@ -262,18 +261,6 @@ The ADK-based agent layer also gives CloudPort a broader portability path. The r
 
 ---
 
-## Demo video
-
-TODO: Add YouTube link after final recording/editing.
-
-Suggested README embed format after upload:
-
-```md
-[![CloudPort Agent demo](docs/architecture_1_migration_overview.png)](TODO_YOUTUBE_URL)
-```
-
----
-
 ## Repository layout
 
 ```text
@@ -295,26 +282,8 @@ cloudport-agent/
 │   └── skills/
 ├── README.md
 └── LICENSE
-```
 
-Recommended repository setup:
-
-- Keep `skills/` as the canonical source for distribution.
-- Copy the same content into `.qwen/skills/` so opening Qwen Code at the repository root works immediately.
-- Avoid symbolic links because they can behave differently across operating systems and ZIP downloads.
-
----
-
-## Pre-submission checklist
-
-Before submitting to Devpost:
-
-- [ ] `skills/` and `.qwen/skills/` contain the final six skills.
-- [ ] Dependency file layout guidance is reflected in `dependency-migration`.
-- [ ] README links work, except the intentionally pending YouTube link before upload.
-- [ ] Architecture images render in GitHub and Devpost.
-- [ ] Demo-time and approval-count badges match the measured values from the recording.
-- [ ] GitHub permalinks point to the exact lines where `pipeline/1_embed_videos.py` and `pipeline/3_analyze_comments.py` call Alibaba Cloud / DashScope APIs.
+The files under `skills/` and those under `.qwen/skills/` are identical.
 
 ---
 
