@@ -282,7 +282,7 @@ cloudport-agent/
 │   └── skills/
 ├── README.md
 └── LICENSE
-
+```
 The files under `skills/` and those under `.qwen/skills/` are identical.
 
 ---
