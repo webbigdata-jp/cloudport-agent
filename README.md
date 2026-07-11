@@ -99,6 +99,7 @@ Therefore, I switched to an approach combining "schema embedding in the prompt,"
 CloudPort Agent is best understood as three diagrams: the migration overview, the reusable skill system, and the post-migration runtime layout.
 
 ```mermaid
+flowchart TD
   A["Original Gemini/GCP App"] --> B["CloudPort Agent"]
   B --> C["Migration Skills"]
   B --> D["Human Approvals"]
