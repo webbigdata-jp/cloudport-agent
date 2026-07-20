@@ -82,6 +82,20 @@ class RequestMappingTests(unittest.TestCase):
         self.assertEqual(request["top_p"], 0.8)
         self.assertNotIn("extra_body", request)
 
+    def test_invalid_top_p_is_rejected_before_api_call(self):
+        for invalid_top_p in (0.0, -0.1, 1.01):
+            with self.subTest(top_p=invalid_top_p):
+                client = FakeClient()
+                with self.assertRaisesRegex(
+                    ValueError, r"top_p must satisfy 0\.0 < top_p <= 1\.0"
+                ):
+                    _Models(client).generate_content(
+                        model="qwen3.6-flash",
+                        contents="hello",
+                        config=GenerateContentConfig(top_p=invalid_top_p),
+                    )
+                self.assertIsNone(client.chat.completions.last_request)
+
     def test_thinking_off(self):
         client = FakeClient()
         _Models(client).generate_content(

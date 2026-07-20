@@ -111,7 +111,7 @@ def generate_qwen_response(*, model, contents, config=None):
 
 st.link_button(
     "View on GitHub",
-    "https://github.com/webbigdata-jp/cloudport-agent",  # TODO: point to the migrated app's final location
+    "https://github.com/webbigdata-jp/cloudport-agent",
 )
 
 # Function Compute exposes FC_FUNCTION_NAME as a reserved system variable.
@@ -192,11 +192,12 @@ with freeform_tab:
 
     top_p = st.slider(
         "Select the Top P",
-        min_value=0.0,
+        min_value=0.05,
         max_value=1.0,
         value=0.95,
         step=0.05,
         key="top_p",
+        help="Alibaba Cloud Model Studio requires 0.0 < top_p <= 1.0.",
     )
 
     prompt = st.text_area(

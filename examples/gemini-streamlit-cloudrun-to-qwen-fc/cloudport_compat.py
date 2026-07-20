@@ -218,8 +218,9 @@ class _Models:
                     config.max_output_tokens, thinking_budget
                 )
             if config.top_p is not None:
+                if not 0.0 < config.top_p <= 1.0:
+                    raise ValueError("top_p must satisfy 0.0 < top_p <= 1.0")
                 request["top_p"] = config.top_p
-
             if thinking_budget is not None:
                 if thinking_budget <= 0:
                     extra_body["enable_thinking"] = False
