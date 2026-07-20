@@ -1,0 +1,3 @@
+# Broad pins keep the example current while avoiding unreviewed major upgrades.
+openai>=1.52,<3
+streamlit>=1.45,<2
