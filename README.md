@@ -302,6 +302,7 @@ cloudport-agent/
 │   ├── migration-validation/
 │   ├── project-profile-generator/
 │   ├── deploy-alibaba-fc-advisor/
+│   ├── system-diagram-generator/
 │   └── project-soccerscope/
 ├── .qwen/skills/                        # Mirrored project-local Skills
 ├── examples/
