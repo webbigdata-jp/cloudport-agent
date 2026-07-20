@@ -118,6 +118,23 @@ For a zip-upload project, the deployment response should explicitly say:
 - Rollback means re-uploading the previous zip package or switching the FC
   version/alias back, depending on the project's FC setup.
 
+## Streamlit Web Function / Custom Runtime ZIP
+
+When the project profile identifies a Streamlit app deployed as an FC Web
+Function with a Custom Runtime ZIP, read
+[streamlit-web-function.md](streamlit-web-function.md) before writing the
+checklist. This pattern adds requirements beyond an ordinary Python ZIP:
+
+- a root-level executable startup script when the chosen FC setup uses it;
+- binding to `0.0.0.0` and `${FC_CUSTOM_LISTEN_PORT}`;
+- a writable home/config/cache location under `/tmp`;
+- explicit non-development Streamlit mode for target-directory installations;
+- runtime-Python discovery and a strict build/runtime minor-version check;
+- `/_stcore/health` verification for unpacked and deployed artifacts.
+
+Do not apply these Streamlit rules to unrelated frameworks. Treat the project
+profile and build script as the source of truth.
+
 ## Known field lessons (Function Compute)
 
 - No runtime package fetches: FC cold-start timeouts kill

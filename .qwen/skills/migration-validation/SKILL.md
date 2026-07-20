@@ -1,50 +1,124 @@
 ---
 name: migration-validation
-description: Verify functional equivalence after porting code from Gemini to Qwen Cloud. Use after ANY migration edit, before declaring a port complete, or when the user asks "did the migration work", "compare outputs", or "validate the port". Never skip this for embedding or structured-output code.
+description: Verify behavioral equivalence after porting Gemini applications to Qwen, including text, image, video, thinking modes, structured output, embeddings, UI rendering, deployment ZIPs, and Function Compute smoke tests. Use after every migration edit and before declaring a port complete.
 ---
 
 # Migration Validation
 
-A port is DONE only when these checks pass. Report results as a
-checklist to the human before proceeding to deployment.
+A migration is complete only when static, request-shape, behavioral, packaged,
+and deployed checks are accounted for. Report each check as PASS, FAIL, or
+NOT RUN with the reason; never turn account-dependent checks into assumed PASS.
 
-## 1. Static checks
+## 1. Static and clean-environment checks
 
-- `grep -rn "google.genai"` returns zero hits in ported files.
-- Old env var (`GEMINI_API_KEY`) is not read by ported code paths.
-- `uv lock` / dependency resolution succeeds from a clean environment.
+- Direct Gemini imports/calls are absent from intended ported paths.
+- Remaining Google imports are classified as unrelated, retained provider
+  paths, or migration misses.
+- Old environment variables are not read by the new path.
+- Dependency resolution and installation succeed from a clean environment.
+- Syntax/compile tests and existing unit tests pass.
+- `skills/` and `.qwen/skills/` mirrors are byte-identical when the repository
+  uses that convention.
 
-## 2. Structured output equivalence
+## 2. Request-shape unit tests
 
-- Run the SAME input sample through old and new code (if the old key
-  is still available) or through the new code only (if not).
-- Validate every response with the shared Pydantic model:
-  `Model.model_validate_json(...)` must succeed on N≥10 varied samples.
-- Compare field-level distributions, not exact strings: LLM outputs are
-  non-deterministic. Check that enum fields stay within the allowed
-  set, numeric scores stay in range, and required fields are non-null.
+Mock the provider client and assert the exact request, not just return text.
+Cover:
 
-## 3. Embedding sanity
+- ordered text/image/video content parts;
+- multiple images and no accidental nested list;
+- intended URI sent by each UI action;
+- `video_url` and required sampling fields;
+- endpoint precedence and region/workspace configuration;
+- temperature/range translation;
+- response text extraction for supported content shapes;
+- Thinking Auto, Manual, and Off;
+- manual total output limit greater than the thinking budget.
 
-- Dimension check: `len(vec)` matches the new model's documented
-  dimension AND the vector index config (e.g. MongoDB Atlas
-  `numDimensions`).
-- Self-similarity smoke test: cosine(v, v) ≈ 1.0; cosine of two
-  unrelated texts is meaningfully lower than two paraphrases.
-- Confirm the corpus re-embed backfill plan exists (old Gemini vectors
-  must not remain mixed in the same index).
+## 3. Multimodal behavioral matrix
 
-## 4. Pipeline smoke run
+Run the smallest representative matrix:
 
-- Run the smallest end-to-end slice (e.g. 1 day of data, or a
-  `--limit 5` flag) and confirm records land in the datastore with the
-  expected schema.
-- Check cost telemetry after the smoke run in the Qwen Cloud console —
-  confirms billing wiring AND produces a screenshot-able cost view.
+```text
+text  × selected text-capable models
+image × each distinct image-routing pattern
+video × each distinct video-routing pattern
+thinking × Auto / representative Manual budget / Off
+runtime × local source / unpacked package / deployed function
+```
 
-## 5. Human sign-off
+For every UI action verify:
 
-Present the checklist results and the diff summary to the human and
-wait for approval before any deployment step. Deployment advice is
-handled by the `deploy-alibaba-fc-advisor` skill — do not deploy
-directly from this skill.
+- no exception is exposed as a raw framework crash;
+- a non-empty result is rendered in the correct panel;
+- the answer refers to the intended image/video, not merely a plausible asset;
+- multi-image answers discuss all required images;
+- source/upstream defects discovered during migration have regression coverage.
+
+Read [multimodal-ui-checklist.md](multimodal-ui-checklist.md) when the app has a
+browser UI, image/video calls, or selectable thinking.
+
+## 4. Structured output equivalence
+
+- Validate every new response with the shared Pydantic/schema model.
+- Use at least 10 varied samples for a production structured-output path.
+- Compare field presence, enum/range validity, nullability, and downstream
+  acceptance rather than exact prose.
+- Test truncation and malformed JSON handling.
+- Confirm whether thinking is intentionally disabled or explicitly validated
+  with the chosen structured-output mode.
+
+## 5. Embedding sanity
+
+- Actual vector length matches both model configuration and vector index.
+- Corpus and query use the same Qwen embedding configuration.
+- Old and new vectors are isolated; a complete re-embed/backfill plan exists.
+- Self-similarity is approximately 1 and paraphrases rank above unrelated text
+  in a small retrieval smoke test.
+- Stored records land in the expected new collection/index/schema.
+
+## 6. Deployment artifact checks
+
+Before upload:
+
+- build script syntax and source manifest checks pass;
+- archive root contains required entrypoint/bootstrap files;
+- development files, secrets, and local environments are excluded;
+- entrypoint is executable when required;
+- build/runtime Python versions and native-wheel platform match;
+- unpacked archive starts locally under the target-style command;
+- health endpoint succeeds.
+
+Avoid `producer | grep -q` package validation under `set -o pipefail`; an early
+consumer exit can make a successful match look like failure. Write the archive
+manifest to a temporary file, then inspect it.
+
+## 7. Live and deployed checks
+
+Account-dependent checks include:
+
+- model availability in the selected region/workspace;
+- key/endpoint consistency;
+- remote media reachability from Model Studio;
+- text, image, and video live smoke calls;
+- FC memory, timeout, code-package size, and public/auth settings;
+- public UI and health endpoint;
+- logs and cost telemetry.
+
+Separate latency observations into provider inference, thinking mode, remote
+media fetch, FC cold start, and warm requests. A slow video/Auto-thinking call
+is not automatically an application failure, but timeouts and user-visible
+behavior must be documented.
+
+## 8. Human sign-off
+
+Present:
+
+1. checklist with PASS/FAIL/NOT RUN;
+2. changed-files summary;
+3. known source defects fixed separately from provider migration;
+4. live evidence and unresolved account-specific risks;
+5. rollback point.
+
+Wait for approval before deployment. Deployment advice belongs to
+`deploy-alibaba-fc-advisor`.

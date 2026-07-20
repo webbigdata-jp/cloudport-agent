@@ -1,44 +1,102 @@
 ---
 name: dependency-migration
-description: Rewrite Python project dependencies when porting from the Gemini stack to Qwen Cloud. Use whenever editing pyproject.toml, requirements.txt, or uv.lock as part of a Gemini-to-Qwen migration, or when the user asks to "clean up dependencies", "remove google-genai", or "add the Qwen SDK".
+description: Rewrite Python dependencies and build environments when porting Gemini applications to Qwen/Alibaba Cloud. Use when editing pyproject.toml, requirements.txt, uv.lock, deployment ZIP dependencies, Python runtime versions, native wheels, or replacing google-genai with openai.
 ---
 
-# Dependency Migration (Gemini stack → Qwen Cloud)
+# Dependency Migration: Gemini → Qwen
+
+Keep runtime dependencies, development tooling, and deployment-build tooling
+separate. A correct import list is not sufficient if the deployment artifact
+contains wheels for the wrong OS, architecture, or Python ABI.
 
 ## Decision table
 
-| Package | Action | Why |
+| Package/tool | Action | Condition |
 |---|---|---|
-| `google-genai` | REMOVE (only after all call sites are ported) | Gemini SDK |
-| `openai` | ADD (pin `>=` current major; check docs) | Qwen Cloud is OpenAI-compatible |
-| `google-api-python-client` | KEEP if the project calls YouTube/other Google Data APIs | Unrelated to Gemini |
-| `pydantic` | KEEP, same version | Schemas are reused for validation |
-| `pymongo`, `numpy`, `python-dotenv` | KEEP | Not LLM-related |
+| `google-genai` | remove | only after all intended Gemini call sites are ported |
+| `openai` | add | for Model Studio OpenAI-compatible API |
+| `google-api-python-client` | keep | when used by unrelated Google Data APIs |
+| `pydantic` | keep | reuse schemas for local validation |
+| datastore/scientific packages | keep | unless independently changed |
+| `pip` | build tool, not normally app dependency | do not `uv add pip` merely to build an FC ZIP |
 
 ## Procedure
 
-1. The dependency file format used by the project (pyproject/uv or requirements.txt) may be defined in the project profile. Please check there before looking for the file.
+1. Read the project profile and identify the dependency source of truth:
+   `pyproject.toml`/lockfile, one or more requirements files, or a deployment
+   manifest.
+2. Grep before removal:
+   `grep -rn "google.genai\|from google import genai" --include='*.py' .`
+3. Inventory related but non-Gemini Google packages. Do not remove by prefix.
+4. Verify the current OpenAI SDK release and `Requires-Python` in official/PyPI
+   metadata before setting a bound. Do not pin from memory.
+5. Update the canonical dependency file, then regenerate generated locks with
+   the project's tool. Never hand-edit `uv.lock`.
+6. Update environment examples and operational docs across the repository.
+7. Recreate a clean environment and resolve/install from scratch.
+8. If building a ZIP/container/layer, validate the target runtime separately
+   from the local developer environment.
 
-2. Grep first, edit second:
-   `grep -rn "google.genai\|from google import genai" --include='*.py'`
-   Do not remove `google-genai` from pyproject.toml while any hit remains.
-3. Before pinning the `openai` package version, check PyPI / official
-   docs for the current release and its `Requires-Python`. Do not pin
-   from memory.
-4. Edit `pyproject.toml`, then regenerate the lockfile
-   (`uv lock` for uv projects). Never hand-edit `uv.lock`.
-5. Update `.env.example` / README: `GEMINI_API_KEY` → `DASHSCOPE_API_KEY`.
-   Search docs and shell scripts for the old env var name too:
-   `grep -rn "GEMINI_API_KEY"` across the whole repo, not just `*.py`.
-6. Commit the dependency change as its own commit, separate from code
-   changes ("move files → commit each step" — a lesson learned the
-   hard way in the source project).
+## Deployment artifact dependencies
 
-## Gotchas
+For a self-contained Python ZIP, determine:
 
-- Some projects use Gemini OPTIONALLY (feature auto-skips when the key
-  is unset). Decide per-file: port it, or leave it Gemini-optional and
-  document that. Do not silently delete optional features.
-- If both stacks must coexist during a staged rollout, keep both SDKs
-  temporarily and gate by env var; remove `google-genai` in a final
-  cleanup commit.
+- target OS and architecture;
+- target Python major/minor version and ABI;
+- whether dependencies include native wheels (`pyarrow`, `numpy`, etc.);
+- maximum package/upload size;
+- whether build and runtime filesystems are writable.
+
+Do not claim that a native macOS/Windows installation is a Linux FC package.
+Build on a compatible Linux host/WSL/container, or use an explicitly verified
+cross-platform wheel-download workflow.
+
+For a profile that targets Linux x86_64 and Python `${PYTHON_VERSION}`, a robust
+pattern is:
+
+```bash
+uv venv .venv-fc --python "$PYTHON_VERSION" --seed
+PYTHON_BIN=.venv-fc/bin/python
+"$PYTHON_BIN" -m pip install \
+  --disable-pip-version-check \
+  --only-binary=:all: \
+  --target .fc-build \
+  --requirement requirements.txt
+```
+
+Why:
+
+- the deployment build does not depend on `/usr/bin/python3 -m pip`;
+- the project `.venv` can use a different Python without contaminating the
+  artifact;
+- `pip` remains in an ephemeral build environment, not application metadata;
+- the installer and target Python minor version are explicit.
+
+`uv pip install --target` can also build a target directory, but do not mix
+its interpreter selection implicitly with a different project `.venv`. Whichever
+installer is chosen, print and validate the selected Python version and target
+platform in the build log.
+
+Read [fc-zip-dependencies.md](fc-zip-dependencies.md) for the complete packaging
+checklist.
+
+## Multiple dependency groups
+
+Some repositories have separate local pipeline and cloud runtime dependencies.
+Document which file/group serves each component. Do not merge them merely for
+convenience; serverless packages should not inherit unrelated development or
+batch dependencies.
+
+For a small standalone example, prefer one runtime source of truth and keep
+build/test commands outside it.
+
+## Staged migration
+
+If both providers coexist temporarily:
+
+- keep both SDKs only while both paths are reachable;
+- gate selection explicitly with configuration;
+- test both paths;
+- remove the old SDK in a dedicated cleanup after the final call site is gone.
+
+Never silently delete an optional Gemini feature because its key is absent.
