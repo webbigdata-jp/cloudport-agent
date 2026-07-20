@@ -35,7 +35,11 @@ contains wheels for the wrong OS, architecture, or Python ABI.
 6. Update environment examples and operational docs across the repository.
 7. Recreate a clean environment and resolve/install from scratch.
 8. If building a ZIP/container/layer, validate the target runtime separately
-   from the local developer environment.
+   from the local developer environment. The source Dockerfile is evidence, not
+   the FC runtime source of truth. Confirm the current FC runtime/version and
+   region before selecting a Python minor.
+9. Record the fully resolved package versions used for the deployment artifact
+   (lockfile, constraints file, or build manifest) so the ZIP is reproducible.
 
 ## Deployment artifact dependencies
 
@@ -76,6 +80,34 @@ Why:
 its interpreter selection implicitly with a different project `.venv`. Whichever
 installer is chosen, print and validate the selected Python version and target
 platform in the build log.
+
+### Cross-building from macOS/Apple Silicon
+
+If the target is FC Linux x86_64:
+
+- Docker: specify `--platform linux/amd64` on both build and validation runs.
+- pip cross-target: specify the target `--platform`, `--python-version`,
+  `--implementation`, and `--abi`, derived from the verified FC runtime.
+- fail rather than falling back to a different local Python minor. A command such
+  as `uv venv --python 3.12 || python3 -m venv` is unsafe unless the fallback is
+  separately checked and guaranteed to be 3.12.
+- inspect the resulting archive for native extensions. Do not print "all deps
+  are pure Python" merely because installation succeeded.
+
+Example for a verified CPython 3.12/x86_64 target:
+
+```bash
+"$PYTHON_BIN" -m pip install \
+  --only-binary=:all: \
+  --platform manylinux2014_x86_64 \
+  --python-version 3.12 \
+  --implementation cp \
+  --abi cp312 \
+  --target "$BUILD_DIR" \
+  --requirement requirements.txt
+```
+
+Use values matching the actual target; do not cargo-cult this example.
 
 Read [fc-zip-dependencies.md](fc-zip-dependencies.md) for the complete packaging
 checklist.

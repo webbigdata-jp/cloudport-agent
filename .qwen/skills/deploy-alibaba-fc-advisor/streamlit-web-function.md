@@ -3,6 +3,29 @@
 Use this reference only when the project profile chooses this deployment
 method. It is not a universal FC recipe.
 
+## Runtime capability gate
+
+Do not copy the Python version from the source Dockerfile into the FC ZIP
+configuration. Resolve the target in this order:
+
+1. identify the target FC region and deployment type;
+2. read the current official FC Python runtime table;
+3. confirm the runtime identifier and executable available in that region;
+4. choose the build Python/ABI to match it;
+5. if the required source version is unsupported, retarget, bundle the runtime,
+   or use a Custom Container.
+
+At the time of the clean-room regression (official page updated 2026-06-02),
+FC listed Python 3.12 public preview as the newest built-in Python runtime and
+did not list Python 3.13. Treat this as a dated observation, not a permanent
+hardcode; always re-check:
+https://www.alibabacloud.com/help/en/functioncompute/fc/python/
+
+A Web Function with Custom Runtime permits an arbitrary HTTP framework. It does
+not mean that `python3.13` or any other arbitrary interpreter is preinstalled.
+Do not emit instructions such as "select Custom Runtime (Python 3.13)" unless
+the target console and runtime have been verified.
+
 ## Build artifact
 
 The ZIP should normally contain at archive root:
@@ -18,6 +41,18 @@ scripts unless the application imports them at runtime.
 
 Build dependencies with the target Python version on a compatible platform.
 See `dependency-migration/fc-zip-dependencies.md`.
+
+### Cross-platform build requirements
+
+For an x86_64 FC target from Apple Silicon/macOS:
+
+- Docker builds must specify `--platform linux/amd64`; otherwise Docker may
+  silently produce Linux arm64 dependencies.
+- Cross-target pip installs must explicitly set the target Python version,
+  implementation, ABI, and platform; do not rely only on the host venv version.
+- Never claim dependencies are pure Python without inspecting the resolved
+  artifact. Streamlit commonly brings native packages such as `pyarrow`,
+  `numpy`, `pydantic-core`, or Pillow.
 
 ## Bootstrap properties
 
@@ -101,7 +136,28 @@ grep -Fx bootstrap "$manifest" >/dev/null
 ```
 
 Also check forbidden root entries and executable mode where the archive/runtime
-preserves it.
+preserves it. Keep the manifest file until all reporting is complete. Under
+`pipefail`, `unzip -Z1 code.zip | head -20` has the same early-consumer/SIGPIPE
+risk; print with `sed -n '1,20p' "$manifest"` instead.
+
+The generated build script itself is a deliverable. Execute that exact script
+end-to-end with tracing/log capture and require:
+
+- exit status 0;
+- the expected final success marker;
+- the expected archive hash/size; and
+- no silent stop after ZIP creation.
+
+Manually running equivalent commands does not validate the script.
+
+## Startup and health must be separable from provider credentials
+
+Prefer lazy Model Studio client initialization so Streamlit and
+`/_stcore/health` can start without a valid API key. Missing credentials should
+produce a controlled UI state when a generation action is attempted, not a raw
+process crash. If the application deliberately requires credentials at startup,
+document that design and run the health test with a dummy value that triggers no
+provider request.
 
 ## FC-equivalent local test
 
@@ -122,9 +178,23 @@ curl -fsS http://127.0.0.1:9000/_stcore/health
 
 Expected response: `ok`.
 
+Run this in a target-compatible Linux x86_64 environment. A macOS failure to
+import an ELF extension is expected and does not prove the package works. If a
+Linux runtime is unavailable, report the import/startup check as NOT RUN and
+record only the narrower binary-format evidence.
+
+## Web Function startup semantics
+
+For this pattern, startup is controlled by the root `bootstrap` or the configured
+startup command. Do not invent an event-function handler such as `index.handler`
+unless the chosen FC screen/API explicitly requires it and the project profile
+documents why.
+
 ## Human deployment checklist additions
 
-- select the runtime matching the package Python minor version;
+- select a currently supported runtime, then build the package for that exact
+  Python minor version and architecture;
+- compare the ZIP size with the target region/upload-method quota;
 - upload only the generated ZIP;
 - configure `DASHSCOPE_API_KEY` and an endpoint from the same workspace/region;
 - allow outbound network access required by Model Studio and remote media;
@@ -135,7 +205,11 @@ Expected response: `ok`.
 
 Official references to re-check:
 
+- FC Python runtimes and regional availability:
+  https://www.alibabacloud.com/help/en/functioncompute/fc/python/
 - FC environment variables:
   https://www.alibabacloud.com/help/en/functioncompute/fc/user-guide/environment-variables
+- FC quotas/package-size limits:
+  https://www.alibabacloud.com/help/en/functioncompute/limits-of-usage
 - Golden build/bootstrap:
   `examples/gemini-streamlit-cloudrun-to-qwen-fc/deploy.sh`

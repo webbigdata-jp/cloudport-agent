@@ -33,7 +33,11 @@ Cover:
 - temperature/range translation;
 - response text extraction for supported content shapes;
 - Thinking Auto, Manual, and Off;
-- manual total output limit greater than the thinking budget.
+- manual total output limit greater than the thinking budget;
+- every provider call site receives the intended config/thinking policy, rather
+  than accidentally reusing or omitting a `config` variable from another tab;
+- UI parameter bounds match provider bounds (for example Qwen temperature must
+  remain below 2 and `top_p` must not use an invalid zero value).
 
 ## 3. Multimodal behavioral matrix
 
@@ -82,18 +86,41 @@ browser UI, image/video calls, or selectable thinking.
 Before upload:
 
 - build script syntax and source manifest checks pass;
+- the exact generated build script is executed end-to-end and exits 0; manually
+  replaying its internal commands is not a substitute;
 - archive root contains required entrypoint/bootstrap files;
 - development files, secrets, and local environments are excluded;
 - entrypoint is executable when required;
-- build/runtime Python versions and native-wheel platform match;
-- unpacked archive starts locally under the target-style command;
-- health endpoint succeeds.
+- target Python is supported in the selected FC region and is not inferred from
+  a source Docker image;
+- build/runtime Python versions and every native-wheel platform/ABI match;
+- compressed archive size fits the target region and upload method;
+- unpacked archive starts locally under the target-style command in a compatible
+  Linux environment;
+- health endpoint succeeds without requiring a live provider request.
 
 Avoid `producer | grep -q` package validation under `set -o pipefail`; an early
 consumer exit can make a successful match look like failure. Write the archive
 manifest to a temporary file, then inspect it.
 
-## 7. Live and deployed checks
+## 7. Evidence labels and truthful reporting
+
+Use PASS only when the exact named check ran in the required environment and
+succeeded. Split broad claims into narrow evidence:
+
+- seeing one `.so` reported as Linux x86_64 is `native binary format: PASS`;
+- an import failure on macOS for that ELF is expected, but
+  `unpacked Linux imports` remains NOT RUN;
+- manually creating a ZIP does not make `deploy.sh end-to-end` PASS;
+- a manifest check does not make `bootstrap/health` PASS;
+- static inspection that a response variable exists does not prove the response
+  is rendered.
+
+For NOT RUN, record the missing prerequisite and the exact next command or
+environment required. Do not summarize a collection of partial checks as
+"package validation passed".
+
+## 8. Live and deployed checks
 
 Account-dependent checks include:
 
@@ -101,7 +128,8 @@ Account-dependent checks include:
 - key/endpoint consistency;
 - remote media reachability from Model Studio;
 - text, image, and video live smoke calls;
-- FC memory, timeout, code-package size, and public/auth settings;
+- FC runtime identifier/version availability in the selected region;
+- FC memory, timeout, code-package size, upload path, and public/auth settings;
 - public UI and health endpoint;
 - logs and cost telemetry.
 
@@ -110,7 +138,7 @@ media fetch, FC cold start, and warm requests. A slow video/Auto-thinking call
 is not automatically an application failure, but timeouts and user-visible
 behavior must be documented.
 
-## 8. Human sign-off
+## 9. Human sign-off
 
 Present:
 

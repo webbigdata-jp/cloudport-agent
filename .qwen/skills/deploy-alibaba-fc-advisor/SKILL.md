@@ -54,6 +54,39 @@ FC workflows, and choosing the wrong one produces useless advice.
   writing steps. Do not default to Docker.
 
 
+## Runtime selection gate — never infer it from the source image
+
+Treat these as three separate facts:
+
+1. the source application's Python version (for example, a Cloud Run
+   `python:3.13-slim` image);
+2. the Python version used to build vendored dependencies;
+3. the interpreter actually available in the selected Function Compute runtime
+   and region.
+
+They are not automatically equal. Before choosing a ZIP target version, check
+the current official FC runtime list and regional availability. As of the FC
+Python documentation updated 2026-06-02, the newest listed built-in Python
+runtime is Python 3.12 (public preview); Python 3.13 is not listed. Re-check the
+documentation during every migration because runtime availability can change.
+
+Do not describe a deployment as "Custom Runtime (Python X.Y)" merely because
+the source Dockerfile used X.Y. A Custom Runtime lets the application start its
+own HTTP server, but it does not by itself prove that an arbitrary host
+interpreter exists. If the source requires a newer Python than FC provides,
+choose one of these explicitly and document the tradeoff:
+
+- retarget and test on a supported FC Python version;
+- bundle a compatible interpreter/runtime and all required shared libraries;
+- use a custom layer with an explicitly configured search path; or
+- use a Custom Container based on the required Python image.
+
+Never generate a ZIP whose `bootstrap` hard-requires an executable that has not
+been verified in the target FC environment.
+
+Official runtime reference to re-check:
+https://www.alibabacloud.com/help/en/functioncompute/fc/python/
+
 ## Docker-to-FC zip migration pattern
 
 When the source app was deployed with Docker or Cloud Run and the migrated app
@@ -130,10 +163,30 @@ checklist. This pattern adds requirements beyond an ordinary Python ZIP:
 - a writable home/config/cache location under `/tmp`;
 - explicit non-development Streamlit mode for target-directory installations;
 - runtime-Python discovery and a strict build/runtime minor-version check;
+- proof that the chosen Python minor actually exists in the target FC runtime;
+- end-to-end execution of the generated build script, not manual replication of
+  its internal commands;
 - `/_stcore/health` verification for unpacked and deployed artifacts.
 
 Do not apply these Streamlit rules to unrelated frameworks. Treat the project
 profile and build script as the source of truth.
+
+## Code-package size and upload-path gate
+
+Measure the final compressed artifact and compare it with the current limit for
+the target region and upload method before saying "upload the ZIP". Current FC
+documentation distinguishes 500 MB regions from 100 MB regions, and SDK/API
+uploads have a separate Base64/request-size constraint. A package that is valid
+for Tokyo or Singapore may still be too large elsewhere.
+
+If the artifact is too large, recommend a verified option rather than assuming
+console upload will work: remove unused dependencies, split dependencies into a
+Layer, use OSS where supported, or switch to a Custom Container. Note that
+Custom Runtime layers do not automatically receive Python search-path wiring;
+configure `PYTHONPATH`/startup paths explicitly when using them.
+
+Official quota reference to re-check:
+https://www.alibabacloud.com/help/en/functioncompute/limits-of-usage
 
 ## Known field lessons (Function Compute)
 

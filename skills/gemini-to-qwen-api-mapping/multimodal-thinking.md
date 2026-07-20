@@ -16,6 +16,12 @@ Create a table before editing:
 A global model picker is valid only when every listed model supports every row.
 Otherwise split the picker or select models internally per call site.
 
+Also record the configuration source for every row. If Thinking is global, each
+call must receive an explicit `thinking_config`/request policy. A bare call that
+omits `config` is not equivalent merely because the selected model has a default
+Thinking mode. Avoid reusing a `config` variable created in another Streamlit
+tab; build a call-local config or a named shared helper.
+
 ## 2. Ordered content conversion
 
 ```python
@@ -96,7 +102,17 @@ Required boundary tests:
 - Manual total output limit is greater than the thinking budget.
 - The UI label distinguishes answer tokens from total completion tokens.
 
-## 4. Semantic routing checks
+## 4. Sampling boundary translation
+
+Gemini and Qwen ranges are not identical. Current Qwen documentation specifies:
+
+- `temperature`: `[0, 2)` — never send exactly `2.0`;
+- `top_p`: greater than zero and at most 1 for OpenAI-compatible chat.
+
+Reflect this in the UI and validate in the adapter. Unit-test the upper/lower
+boundaries, not only a normal value such as 0.7.
+
+## 5. Semantic routing checks
 
 A 200 response is not enough. Verify the model received the intended asset:
 
@@ -104,13 +120,17 @@ A 200 response is not enough. Verify the model received the intended asset:
 - Two-image comparison discusses both images.
 - Video description, tags, highlights, and geolocation use their own videos.
 - No call contains a nested Python list serialized as text.
-- The rendered response is non-empty.
+- The rendered response is non-empty and the render statement exists in the
+  button's response branch.
+- Every call receives the intended config/thinking policy.
+- Provider errors are caught at the UI boundary rather than shown as raw
+  Streamlit tracebacks.
 
 The validated example caught upstream-style defects where an ER response was
 not rendered and the glasses tab sent the ER image. Keep these as regression
 patterns, not project-specific rules.
 
-## 5. Current sources to verify during a migration
+## 6. Current sources to verify during a migration
 
 - OpenAI-compatible chat and thinking parameters:
   https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions

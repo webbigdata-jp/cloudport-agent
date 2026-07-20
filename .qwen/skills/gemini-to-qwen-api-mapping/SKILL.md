@@ -54,6 +54,32 @@ Normalize response content because SDKs/models may return a plain string or a
 list of typed text parts. Treat an empty response as an explicit error state,
 not as valid Markdown/UI content.
 
+### Sampling parameter boundaries
+
+Do not copy Gemini UI ranges blindly. Qwen OpenAI-compatible APIs currently
+document `temperature` in `[0, 2)` and `top_p` above zero. Therefore:
+
+- a Gemini slider that permits exactly `2.0` must be reduced or rejected;
+- a slider that permits `top_p=0.0` must be adjusted;
+- validate or clamp at the adapter boundary as defense in depth; and
+- add boundary tests for the UI value and the final request.
+
+Re-check model-specific documentation because some models discourage or reject
+sampling overrides.
+
+## Configuration scope and call-site completeness
+
+If the source presents a global model/thinking/sampling control, enumerate every
+provider call site and decide whether that control applies. Do not rely on a
+module-level or previously assigned variable named `config`; create or pass the
+configuration intentionally at each call site.
+
+A migration is incomplete when text calls receive Thinking settings but image
+or video calls silently omit them while the UI implies global behavior. Either
+propagate the settings to every supported call or label/disable the control for
+unsupported scopes. Add a static/request-shape test for every distinct call-site
+pattern.
+
 ## Multimodal input
 
 OpenAI-compatible message content is an ordered flat list. Preserve the
@@ -134,6 +160,14 @@ Embedding vectors from different models are not interchangeable. Verify the
 actual output dimension, re-embed the entire corpus, and use a separate vector
 collection/index or an atomic migration. Never query a Gemini vector space
 with Qwen query vectors as though they were equivalent.
+
+## Interactive client initialization
+
+For browser/serverless applications, prefer lazy provider-client initialization.
+The web server and health endpoint should be able to start without performing a
+live model request. Missing credentials should produce a controlled provider-
+branded UI message at action time, not prevent process startup or expose a raw
+framework traceback.
 
 ## Error handling
 
