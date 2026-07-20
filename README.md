@@ -255,7 +255,7 @@ No Serverless Devs `s.yaml` is required for this evidence. The repository shows 
 | Qwen embedding API usage | https://github.com/webbigdata-jp/qwen-soccerscope/blob/main/pipeline/1_embed_videos.py#L109 |
 | Qwen analysis API usage | https://github.com/webbigdata-jp/qwen-soccerscope/blob/main/pipeline/3_analyze_comments.py#L177 |
 | Alibaba Cloud deployment script | https://github.com/webbigdata-jp/qwen-soccerscope/blob/main/app/deploy.sh#L25 |
-| Demo video | [CloudPort Agent](https://youtu.be/Q7YraU36X0Q) |
+| Demo video | [CloudPort Agent](https://youtu.be/hRPC2sECfmo) |
 | Evidence video | [Proof that it is running on Alibaba Cloud](https://youtu.be/zrU0wAVNn0Q) |
 | Project blog | [AI Agent Skills migrating a World Cup RAG app](https://dev.to/dahara1/ai-agent-skills-migrating-worldcup-rag-appgemini-and-gcp-to-qwen-and-alibaba-5dmg) |
 
@@ -312,6 +312,8 @@ cloudport-agent/
 │   │   ├── smoke_test.py
 │   │   └── tests/
 │   └── system-diagram-generator-output/
+│   │   ├── system-diagram.html
+│   │   └── README.md
 ├── docs/
 │   ├── architecture_1_migration_overview.png
 │   ├── architecture_2_skills_architecture.png
