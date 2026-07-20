@@ -251,6 +251,7 @@ No Serverless Devs `s.yaml` is required for this evidence. The repository shows 
 | Original Gemini web app | https://soccer.tubesaku.com/ |
 | Migrated Qwen repository | https://github.com/webbigdata-jp/qwen-soccerscope |
 | Migrated Qwen web app | https://qwen-soccer.tubesaku.com/ |
+| Migrated Gemini Official Sample to Qwen | https://qwenstremlint.tubesaku.com/ |
 | Qwen embedding API usage | https://github.com/webbigdata-jp/qwen-soccerscope/blob/main/pipeline/1_embed_videos.py#L109 |
 | Qwen analysis API usage | https://github.com/webbigdata-jp/qwen-soccerscope/blob/main/pipeline/3_analyze_comments.py#L177 |
 | Alibaba Cloud deployment script | https://github.com/webbigdata-jp/qwen-soccerscope/blob/main/app/deploy.sh#L25 |
