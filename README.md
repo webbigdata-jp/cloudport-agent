@@ -140,6 +140,7 @@ See also: [`docs/SKILLS_ARCHITECTURE.md`](docs/SKILLS_ARCHITECTURE.md)
 | `deploy-alibaba-fc-advisor` | Core | Produces Alibaba Cloud Function Compute deployment advice and human-executed checklists. |
 | `project-profile-generator` | Generalizer | Scans an unfamiliar repository and drafts a thin project profile for human approval. |
 | `project-soccerscope` | Project profile | Reference profile encoding SoccerScope-specific paths, ADK structure, constraints, and migration lessons. |
+| `system-diagram-generator` | Standalone | Scans an already-cloned repository and generates a shareable HTML architecture report (infra/deploy diagram, data flow diagram, scale summary) with confirmed/inferred labels and confidentiality-safe output. |
 
 ---
 
